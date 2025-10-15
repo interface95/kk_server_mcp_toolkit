@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "kk-toolkit": {
+      "command": "/Volumes/sd/code/rust/kk_server_mcp_toolkit/target/release/kk_server_mcp_toolkit"
+    }
+  }
+}

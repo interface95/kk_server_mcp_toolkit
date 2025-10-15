@@ -1,0 +1,33 @@
+[package]
+name = "kk_server_mcp_toolkit"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rmcp = { version = "0.8", features = ["server", "transport-io", "macros"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+schemars = "1.0"
+flate2 = "1.1.4"
+prost = "0.14.1"
+md5 = "0.7"
+base64 = "0.21"
+hex = "0.4"
+
+# HTTP 支持 (可选 - 使用 cargo build --features http 启用)
+[dependencies.rmcp-actix-web]
+version = "0.8"
+optional = true
+
+[features]
+default = []
+http = ["rmcp-actix-web"]
+
+[profile.release]
+opt-level = "z"     # 优化文件大小
+lto = true          # 启用链接时优化
+codegen-units = 1   # 更好的优化，但编译慢
+strip = true        # 自动移除符号
+panic = "abort"     # 减小 panic 处理代码
