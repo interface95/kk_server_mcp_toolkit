@@ -7,9 +7,16 @@
 这个 MCP 服务器提供了 **3 个 BatchReportEvent 解析工具**：
 
 ### 🔧 解析工具
-- **parse_batch_from_base64** - 解析 Base64 编码的 BatchReportEvent (gzip 压缩)
-- **parse_batch_from_hex** - 解析十六进制字符串的 BatchReportEvent (gzip 压缩)
-- **parse_batch_from_file** - 从文件路径解析 BatchReportEvent (gzip 压缩)
+- **parse_batch_from_base64** - 解析 Base64 编码的 BatchReportEvent
+- **parse_batch_from_hex** - 解析十六进制字符串的 BatchReportEvent
+- **parse_batch_from_file** - 从文件路径解析 BatchReportEvent
+
+**支持的压缩格式：**
+1. ✅ **标准 Gzip 压缩** - `CommonUtility.GzipDecompress`
+2. ✅ **Gzip2 压缩** - `AppSecurity.Gzip2Decompress`（AES-128-CBC 解密 + Gzip 解压）
+3. ✅ **无压缩** - 直接 Protobuf 解析
+
+工具会**自动尝试**所有格式，并返回成功解析的结果。
 
 ## 快速开始
 

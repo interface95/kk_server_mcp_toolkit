@@ -1,4 +1,6 @@
+use aes::Aes128;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use cbc::{Decryptor, cipher::{BlockDecryptMut, KeyIvInit}};
 use flate2::read::GzDecoder;
 use hex::FromHex;
 use prost::Message;
@@ -202,6 +204,7 @@ fn decode_hex(input: &str) -> Result<Vec<u8>, String> {
 }
 
 fn parse_batch_from_bytes(bytes: Vec<u8>) -> BatchReportEventParseResult {
+    // 策略 1: 普通 gzip 解压
     if let Some(result) =
         try_parse_with_strategy(&bytes, "CommonUtility::GzipDecompress", |input| {
             let mut decoder = GzDecoder::new(&input[..]);
@@ -212,8 +215,14 @@ fn parse_batch_from_bytes(bytes: Vec<u8>) -> BatchReportEventParseResult {
         return result;
     }
 
-    // TODO: 实现 AppSecurity::Gzip2Decompress 对应逻辑
+    // 策略 2: Gzip2 解压（AES 解密 + Gzip 解压）
+    if let Some(result) =
+        try_parse_with_strategy(&bytes, "AppSecurity::Gzip2Decompress", gzip2_decompress)
+    {
+        return result;
+    }
 
+    // 策略 3: 直接解析（无需解压）
     if let Some(result) = try_parse_with_strategy(&bytes, "直接解析", |input| Ok(input.to_vec()))
     {
         return result;
@@ -227,6 +236,46 @@ fn parse_batch_from_bytes(bytes: Vec<u8>) -> BatchReportEventParseResult {
             "步骤失败：直接解析".to_string(),
         ],
     }
+}
+
+/// Gzip2 解压：先 AES 解密，再 Gzip 解压
+///
+/// 对应 C# 代码：
+/// ```csharp
+/// public static byte[] Gzip2Decompress(byte[] data)
+/// {
+///     return CommonUtility.GzipDecompress(DecryptCommonly(data));
+/// }
+///
+/// public static byte[] DecryptCommonly(byte[] data)
+/// {
+///     return CommonUtility.AesDecryptToByteArray(data, ConstDefaultKey, ConstDefaultIv);
+/// }
+/// ```
+///
+/// 参考：`/Volumes/sd/code/dotnet/ApiServer/src/ApiSecurityTool/AppSecurity.cs`
+fn gzip2_decompress(input: &[u8]) -> std::io::Result<Vec<u8>> {
+    // AES 密钥和 IV（来自 AppSecurity.cs 常量定义）
+    // ConstDefaultKey = "46a8qpMw6643TDiV"
+    // ConstDefaultIv = "W3HaJGyGrfOVRb42"
+    const AES_KEY: &[u8; 16] = b"46a8qpMw6643TDiV";
+    const AES_IV: &[u8; 16] = b"W3HaJGyGrfOVRb42";
+
+    // 1. AES-128-CBC 解密（PKCS7 填充）
+    type Aes128CbcDec = Decryptor<Aes128>;
+
+    let mut buffer = input.to_vec();
+
+    let decrypted = Aes128CbcDec::new(AES_KEY.into(), AES_IV.into())
+        .decrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(&mut buffer)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("AES 解密失败: {:?}", e)))?;
+
+    // 2. Gzip 解压
+    let mut decoder = GzDecoder::new(&decrypted[..]);
+    let mut decompressed = Vec::new();
+    decoder.read_to_end(&mut decompressed)?;
+
+    Ok(decompressed)
 }
 
 fn try_parse_with_strategy<F>(
