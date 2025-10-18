@@ -2,7 +2,7 @@ use aes::Aes128;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use cbc::{Decryptor, cipher::{BlockDecryptMut, KeyIvInit}};
 use flate2::read::GzDecoder;
-use hex::FromHex;
+use hex::{FromHex, encode as hex_encode};
 use prost::Message;
 use rmcp::{
     ErrorData, ServerHandler, ServiceExt,
@@ -51,6 +51,7 @@ impl<T> CallResult<T> {
 #[derive(Debug, Serialize)]
 pub struct BatchReportEventDto {
     pub data: Value,
+    pub decompressed_hex: String,
     pub input_md5: String,
     pub result_md5: String,
     pub is_match: bool,
@@ -241,19 +242,6 @@ fn parse_batch_from_bytes(bytes: Vec<u8>) -> BatchReportEventParseResult {
 /// Gzip2 解压：先 AES 解密，再 Gzip 解压
 ///
 /// 对应 C# 代码：
-/// ```csharp
-/// public static byte[] Gzip2Decompress(byte[] data)
-/// {
-///     return CommonUtility.GzipDecompress(DecryptCommonly(data));
-/// }
-///
-/// public static byte[] DecryptCommonly(byte[] data)
-/// {
-///     return CommonUtility.AesDecryptToByteArray(data, ConstDefaultKey, ConstDefaultIv);
-/// }
-/// ```
-///
-/// 参考：`/Volumes/sd/code/dotnet/ApiServer/src/ApiSecurityTool/AppSecurity.cs`
 fn gzip2_decompress(input: &[u8]) -> std::io::Result<Vec<u8>> {
     // AES 密钥和 IV（来自 AppSecurity.cs 常量定义）
     // ConstDefaultKey = "46a8qpMw6643TDiV"
@@ -308,12 +296,13 @@ where
 }
 
 impl BatchReportEventDto {
-    fn from_parsed(event: BatchReportEvent, _decompressed: &[u8], original: &[u8]) -> Self {
+    fn from_parsed(event: BatchReportEvent, decompressed: &[u8], original: &[u8]) -> Self {
         let mut json_value =
             serde_json::to_value(&event).unwrap_or_else(|_| json!({ "error": "序列化失败" }));
         strip_nulls(&mut json_value);
 
         let data_json = json_value;
+        let decompressed_hex = hex_encode(decompressed);
 
         let input_md5 = format!("{:X}", md5::compute(original));
 
@@ -325,6 +314,7 @@ impl BatchReportEventDto {
 
         BatchReportEventDto {
             data: data_json,
+            decompressed_hex,
             input_md5,
             result_md5,
             is_match,
